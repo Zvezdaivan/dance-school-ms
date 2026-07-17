@@ -1,0 +1,68 @@
+==============================================
+ Dance School Management System — UAT Guide
+==============================================
+
+Thank you for testing! This build contains DEMO DATA ONLY (fictional students,
+teachers, and payments), so feel free to click, edit, and delete anything.
+
+-----------------------------------------------
+ HOW TO START (no installation needed)
+-----------------------------------------------
+1. Extract the whole zip to any folder (e.g. your Desktop).
+2. Open the extracted "DanceSchoolMS" folder.
+3. Double-click  DanceSchoolMS.exe
+   - If Windows shows a blue "Windows protected your PC" screen, click
+     "More info" and then "Run anyway". (The app is not code-signed yet;
+     this is expected for a UAT build.)
+4. A black status window opens, then your browser opens the system
+   automatically at http://127.0.0.1:3999
+5. KEEP THE BLACK WINDOW OPEN while testing. Close it when you are done.
+
+Everything runs on this computer only — no internet connection is needed
+and no data leaves the machine.
+
+-----------------------------------------------
+ SIGN-IN ACCOUNTS
+-----------------------------------------------
+ Role                 Email                   Password
+ -------------------  ----------------------  ------------
+ Admin (full access)  admin@dance.school      Admin1234!
+ Manager              manager@dance.school    Manager1234!
+ Front-desk staff     staff@dance.school      Staff1234!
+ Teacher (Mandy)      mandy@dance.school      Teacher1234!
+
+-----------------------------------------------
+ SUGGESTED TEST WALKTHROUGH (15-20 minutes)
+-----------------------------------------------
+ 1. Dashboard - check the numbers and the amber alert banners make sense.
+ 2. Students - search and filter; open a student; add a new student; edit one;
+    try saving a student with no name (you should get a clear error message).
+ 3. Payments - record a tuition payment; record one as "Pending" and watch it
+    appear in Outstanding; use "Mark paid"; try "Void".
+ 4. Classes - open a class; enroll a student; try enrolling the same student
+    twice (should be blocked); drop a student.
+ 5. Attendance - pick a class and today's date, mark statuses, save, then
+    reload the same date to confirm it remembered.
+ 6. Work Hours - as manager/admin, approve or reject the pending records.
+ 7. Payroll - generate drafts for this month; open a record; add an allowance
+    with a reason; approve it; mark it paid with a payment date.
+ 8. Reports - download a few Excel reports and open them in Excel; check totals.
+ 9. Roles - sign out and back in as staff@ and mandy@ to confirm each role
+    only sees what they should.
+10. Audit Log (admin) - confirm everything you just did was recorded.
+
+-----------------------------------------------
+ RECORDING FEEDBACK
+-----------------------------------------------
+For each issue, please note: the page, what you did, what you expected, and
+what happened instead. Screenshots help a lot.
+
+-----------------------------------------------
+ TROUBLESHOOTING
+-----------------------------------------------
+- Browser did not open: open http://127.0.0.1:3999 yourself.
+- "The server did not start": another program may be using port 3999.
+  Create a file  data\port.txt  containing another number (e.g. 4200),
+  then run DanceSchoolMS.exe again and use http://127.0.0.1:4200
+- To start over with fresh demo data: delete the whole folder and
+  re-extract the zip.

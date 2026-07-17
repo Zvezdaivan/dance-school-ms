@@ -1,0 +1,264 @@
+// Dance School Management System — database schema
+//
+// Conventions:
+// - Money is stored as integer cents (HKD) to avoid floating-point errors.
+// - Status/enum-like fields are strings validated by zod at the app layer
+//   (SQLite does not support Prisma enums). Allowed values live in
+//   src/lib/constants.ts, the single source of truth.
+// - Financially significant entities use soft delete (deletedAt) — records
+//   are voided, never destroyed.
+// - To switch to PostgreSQL: change provider to "postgresql", update
+//   DATABASE_URL, and re-run migrations. No model changes required.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         String // ADMIN | MANAGER | STAFF | TEACHER
+  status       String    @default("ACTIVE") // ACTIVE | INACTIVE
+  teacherId    String?   @unique
+  teacher      Teacher?  @relation(fields: [teacherId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs  AuditLog[]
+  exportLogs ExportLog[]
+}
+
+model Student {
+  id             String    @id @default(cuid())
+  fullName       String
+  contactNumber  String
+  email          String?
+  dateOfBirth    DateTime?
+  guardianName   String?
+  guardianPhone  String?
+  address        String?
+  enrollmentDate DateTime
+  status         String    @default("ACTIVE") // ACTIVE | INACTIVE | SUSPENDED | GRADUATED
+  notes          String?
+  medicalNotes   String?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  payments    Payment[]
+  enrollments Enrollment[]
+  attendance  AttendanceRecord[]
+
+  @@index([status])
+  @@index([fullName])
+}
+
+model Teacher {
+  id                String    @id @default(cuid())
+  fullName          String
+  contactNumber     String
+  email             String?
+  employmentType    String // HOURLY | MONTHLY | CONTRACTOR
+  hourlyRateCents   Int?
+  monthlySalaryCents Int?
+  bankName          String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  startDate         DateTime
+  status            String    @default("ACTIVE") // ACTIVE | INACTIVE
+  notes             String?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user     User?
+  classes  DanceClass[]
+  workLogs WorkLog[]
+  payrolls PayrollRecord[]
+
+  @@index([status])
+}
+
+model DanceClass {
+  id            String    @id @default(cuid())
+  name          String
+  style         String // e.g. Ballet, Hip Hop, Jazz, Contemporary, K-Pop, Latin
+  level         String // BEGINNER | INTERMEDIATE | ADVANCED | OPEN
+  teacherId     String
+  teacher       Teacher   @relation(fields: [teacherId], references: [id])
+  dayOfWeek     Int? // 0 = Sunday … 6 = Saturday
+  startTime     String? // "HH:mm"
+  endTime       String? // "HH:mm"
+  scheduleNotes String?
+  capacity      Int
+  feeCents      Int
+  feeType       String // PER_CLASS | MONTHLY | PACKAGE
+  status        String    @default("ACTIVE") // ACTIVE | INACTIVE | COMPLETED
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  enrollments Enrollment[]
+  attendance  AttendanceRecord[]
+  workLogs    WorkLog[]
+
+  @@index([status])
+  @@index([teacherId])
+}
+
+model Enrollment {
+  id         String     @id @default(cuid())
+  studentId  String
+  student    Student    @relation(fields: [studentId], references: [id])
+  classId    String
+  class      DanceClass @relation(fields: [classId], references: [id])
+  enrolledAt DateTime
+  droppedAt  DateTime?
+  status     String     @default("ACTIVE") // ACTIVE | DROPPED | COMPLETED
+  notes      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([studentId])
+  @@index([classId])
+  @@index([status])
+}
+
+model Payment {
+  id            String     @id @default(cuid())
+  studentId     String
+  student       Student    @relation(fields: [studentId], references: [id])
+  paymentType   String // MONTHLY_TUITION | COURSE_PACKAGE | SINGLE_CLASS | REGISTRATION_FEE | OTHER
+  amountCents   Int
+  paymentDate   DateTime
+  method        String // CASH | BANK_TRANSFER | FPS | CREDIT_CARD | CHEQUE | OTHER
+  status        String // PAID | PENDING | OVERDUE | REFUNDED
+  receiptNumber String     @unique
+  periodMonth   String? // "YYYY-MM" for tuition payments
+  notes         String?
+  recordedById  String?
+  deletedAt     DateTime? // voided, never hard-deleted
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+  @@index([paymentDate])
+}
+
+model AttendanceRecord {
+  id           String     @id @default(cuid())
+  classId      String
+  class        DanceClass @relation(fields: [classId], references: [id])
+  studentId    String
+  student      Student    @relation(fields: [studentId], references: [id])
+  sessionDate  DateTime
+  status       String // PRESENT | ABSENT | LATE | EXCUSED
+  notes        String?
+  recordedById String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([classId, studentId, sessionDate])
+  @@index([sessionDate])
+}
+
+model WorkLog {
+  id               String      @id @default(cuid())
+  teacherId        String
+  teacher          Teacher     @relation(fields: [teacherId], references: [id])
+  classId          String?
+  class            DanceClass? @relation(fields: [classId], references: [id])
+  workDate         DateTime
+  startTime        String // "HH:mm"
+  endTime          String // "HH:mm"
+  breakMinutes     Int         @default(0)
+  payableMinutes   Int // computed: end - start - break, or adjustedMinutes
+  adjustedMinutes  Int? // manual override; requires adjustmentReason
+  adjustmentReason String?
+  remarks          String?
+  approvalStatus   String      @default("PENDING") // PENDING | APPROVED | REJECTED
+  approvedById     String?
+  approvedAt       DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([teacherId])
+  @@index([workDate])
+  @@index([approvalStatus])
+}
+
+model PayrollRecord {
+  id              String    @id @default(cuid())
+  teacherId       String
+  teacher         Teacher   @relation(fields: [teacherId], references: [id])
+  month           String // "YYYY-MM"
+  employmentType  String // snapshot at generation time
+  hourlyRateCents Int? // snapshot
+  totalMinutes    Int       @default(0) // approved payable minutes in month
+  basePayCents    Int
+  allowanceCents  Int       @default(0)
+  bonusCents      Int       @default(0)
+  deductionCents  Int       @default(0)
+  grossPayCents   Int
+  netPayCents     Int
+  paymentDate     DateTime?
+  paymentMethod   String? // CASH | BANK_TRANSFER | FPS | CHEQUE | OTHER
+  status          String    @default("DRAFT") // DRAFT | APPROVED | PAID
+  notes           String?
+  generatedById   String?
+  approvedById    String?
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  adjustments PayrollAdjustment[]
+
+  @@unique([teacherId, month])
+  @@index([month])
+  @@index([status])
+}
+
+model PayrollAdjustment {
+  id          String        @id @default(cuid())
+  payrollId   String
+  payroll     PayrollRecord @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  type        String // ALLOWANCE | BONUS | DEDUCTION
+  amountCents Int
+  reason      String
+  createdById String?
+  createdAt   DateTime      @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  userEmail  String // snapshot so the trail survives user changes
+  action     String // CREATE | UPDATE | DELETE | APPROVE | REJECT | STATUS_CHANGE | LOGIN | EXPORT
+  entityType String // Student | Payment | Teacher | WorkLog | PayrollRecord | DanceClass | ...
+  entityId   String
+  summary    String
+  changes    String? // JSON diff of changed fields
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model ExportLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  reportType String
+  params     String // JSON of filters used
+  createdAt  DateTime @default(now())
+}
