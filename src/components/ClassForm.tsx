@@ -1,7 +1,8 @@
 "use client";
 
 import { ErrorBanner, Field, useJsonSubmit } from "@/components/forms";
-import { CLASS_LEVELS, CLASS_STATUSES, DAYS_OF_WEEK, FEE_TYPES, label } from "@/lib/constants";
+import { EnumOptions } from "@/components/ui";
+import { CLASS_LEVELS, CLASS_STATUSES, DAYS_OF_WEEK, FEE_TYPES } from "@/lib/constants";
 
 export interface ClassFormValues {
   id?: string;
@@ -45,7 +46,7 @@ export function ClassForm({
         </Field>
         <Field label="Level">
           <select name="level" defaultValue={initial?.level ?? "BEGINNER"} className="input">
-            {CLASS_LEVELS.map((l) => <option key={l} value={l}>{label(l)}</option>)}
+            <EnumOptions values={CLASS_LEVELS} />
           </select>
         </Field>
         <Field label="Teacher">
@@ -77,13 +78,13 @@ export function ClassForm({
           </Field>
           <Field label="Fee type">
             <select name="feeType" defaultValue={initial?.feeType ?? "MONTHLY"} className="input">
-              {FEE_TYPES.map((f) => <option key={f} value={f}>{label(f)}</option>)}
+              <EnumOptions values={FEE_TYPES} />
             </select>
           </Field>
         </div>
         <Field label="Status">
           <select name="status" defaultValue={initial?.status ?? "ACTIVE"} className="input">
-            {CLASS_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
+            <EnumOptions values={CLASS_STATUSES} />
           </select>
         </Field>
       </div>

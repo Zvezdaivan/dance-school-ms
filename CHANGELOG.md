@@ -1,5 +1,31 @@
 # Changelog
 
+## Sprint 2 — code reduction & response speed (2026-07-18)
+
+Four-angle cleanup review (reuse / simplification / efficiency / altitude), applied:
+
+- **Faster page loads**: session validation now cached per request (was 2–3 DB
+  round-trips per page, now 1) and fetches only needed columns; independent
+  queries parallelized on student/class/work-log/attendance pages; payroll
+  generation batches its reads (2 queries instead of ~2 per teacher);
+  attendance saves run as one batched transaction; recent-attendance list
+  aggregates in SQL instead of fetching 500 rows; payroll/expense/tax reports
+  filter by month in SQL (indexed) instead of in JavaScript.
+- **Sturdier error handling**: typed DomainError replaces regex matching on
+  error messages (two payroll validation errors previously surfaced as 500s);
+  foreign-key violations map to a clear 400.
+- **One implementation per rule**: teacher row-scoping (`scopeTeacherId`),
+  outstanding-payment definition, pagination math, blank-form-value handling,
+  fetch-or-404, date-range filters, and audit diffs (now derived from the
+  update payload, so new fields are audited automatically).
+- **Less markup**: shared EnumOptions/FilterSelect/makeQs components replace
+  ~30 copy-pasted select/query-string blocks; dead code removed (unused
+  exports, dead attendance-notes plumbing, a no-op string replace).
+
+Deferred by choice: Prisma soft-delete extension, shared payments-table
+component, per-mutation write+audit transactions, zod query-param schemas,
+SectionCard markup sweep (all noted in the review; low value or high churn).
+
 ## Milestone 1 — UAT release (2026-07-17) — git tag `milestone-1`
 
 First complete version, sent to the principal for user acceptance testing.

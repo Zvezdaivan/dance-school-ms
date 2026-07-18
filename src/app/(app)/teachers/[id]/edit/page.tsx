@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { toDateInput } from "@/lib/dates";
+import { centsToDollars } from "@/lib/money";
 import { PageHeader } from "@/components/ui";
 import { TeacherForm } from "@/components/TeacherForm";
 import { getTeacher } from "@/server/services/teachers";
@@ -18,8 +19,8 @@ export default async function EditTeacherPage(props: { params: Promise<{ id: str
           contactNumber: t.contactNumber,
           email: t.email,
           employmentType: t.employmentType,
-          hourlyRate: t.hourlyRateCents != null ? String(t.hourlyRateCents / 100) : "",
-          monthlySalary: t.monthlySalaryCents != null ? String(t.monthlySalaryCents / 100) : "",
+          hourlyRate: t.hourlyRateCents != null ? String(centsToDollars(t.hourlyRateCents)) : "",
+          monthlySalary: t.monthlySalaryCents != null ? String(centsToDollars(t.monthlySalaryCents)) : "",
           bankName: t.bankName,
           bankAccountName: t.bankAccountName,
           bankAccountNumber: t.bankAccountNumber,

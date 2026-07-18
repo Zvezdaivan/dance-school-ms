@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { STUDENT_STATUSES, label } from "@/lib/constants";
+import { STUDENT_STATUSES } from "@/lib/constants";
 import { fmtDate } from "@/lib/dates";
-import { Badge, EmptyState, PageHeader, Pagination } from "@/components/ui";
+import { Badge, EmptyState, FilterSelect, makeQs, PageHeader, Pagination } from "@/components/ui";
 import { listStudents, StudentListParams } from "@/server/services/students";
 
 export default async function StudentsPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -16,8 +16,7 @@ export default async function StudentsPage(props: { searchParams: Promise<Record
     page: sp.page ? Number(sp.page) : 1,
   };
   const { students, total, page, pages } = await listStudents(params);
-  const qs = (overrides: Record<string, string>) =>
-    "?" + new URLSearchParams({ ...(sp as Record<string, string>), ...overrides }).toString();
+  const qs = makeQs(sp);
 
   return (
     <>
@@ -32,13 +31,7 @@ export default async function StudentsPage(props: { searchParams: Promise<Record
           <label className="label">Search</label>
           <input name="q" defaultValue={sp.q ?? ""} placeholder="Name, phone, email, guardian…" className="input" />
         </div>
-        <div className="w-40">
-          <label className="label">Status</label>
-          <select name="status" defaultValue={sp.status ?? ""} className="input">
-            <option value="">All</option>
-            {STUDENT_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
-          </select>
-        </div>
+        <FilterSelect name="status" title="Status" defaultValue={sp.status} values={STUDENT_STATUSES} />
         <div className="w-44">
           <label className="label">Sort by</label>
           <select name="sort" defaultValue={sp.sort ?? "fullName"} className="input">

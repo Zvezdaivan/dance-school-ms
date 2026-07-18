@@ -1,12 +1,19 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { SessionUser } from "@/lib/auth";
-import { ApiError } from "@/lib/api-error";
+import { ApiError, orNotFound } from "@/lib/api-error";
 import { logAudit, diffChanges } from "@/lib/audit";
-import { parseDateInput } from "@/lib/dates";
+import { dateRangeFilter, parseDateInput } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
+import { paginate, pageCount } from "@/lib/paginate";
 import { paymentCreateSchema, paymentUpdateSchema } from "@/lib/validation";
 import { z } from "zod";
+
+/** The single business definition of an outstanding payment. */
+export const OUTSTANDING_WHERE = {
+  deletedAt: null,
+  status: { in: ["PENDING", "OVERDUE"] },
+} satisfies Prisma.PaymentWhereInput;
 
 export interface PaymentListParams {
   studentId?: string;
@@ -19,23 +26,18 @@ export interface PaymentListParams {
   pageSize?: number;
 }
 
-export function paymentWhere(params: PaymentListParams): Prisma.PaymentWhereInput {
+function paymentWhere(params: PaymentListParams): Prisma.PaymentWhereInput {
   const where: Prisma.PaymentWhereInput = { deletedAt: null };
   if (params.studentId) where.studentId = params.studentId;
   if (params.status) where.status = params.status;
   if (params.method) where.method = params.method;
   if (params.paymentType) where.paymentType = params.paymentType;
-  if (params.from || params.to) {
-    where.paymentDate = {};
-    if (params.from) where.paymentDate.gte = parseDateInput(params.from);
-    if (params.to) where.paymentDate.lte = parseDateInput(params.to);
-  }
+  where.paymentDate = dateRangeFilter(params);
   return where;
 }
 
 export async function listPayments(params: PaymentListParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
+  const { page, pageSize, skip, take } = paginate(params);
   const where = paymentWhere(params);
   const [total, payments, sums] = await Promise.all([
     prisma.payment.count({ where }),
@@ -43,20 +45,20 @@ export async function listPayments(params: PaymentListParams) {
       where,
       include: { student: { select: { fullName: true } } },
       orderBy: { paymentDate: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      skip,
+      take,
     }),
     prisma.payment.groupBy({ by: ["status"], where, _sum: { amountCents: true } }),
   ]);
   const totals: Record<string, number> = {};
   for (const s of sums) totals[s.status] = s._sum.amountCents ?? 0;
-  return { payments, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), totals };
+  return { payments, total, page, pageSize, pages: pageCount(total, pageSize), totals };
 }
 
 /** Outstanding = PENDING + OVERDUE payments, grouped per student. */
 export async function outstandingByStudent() {
   const rows = await prisma.payment.findMany({
-    where: { deletedAt: null, status: { in: ["PENDING", "OVERDUE"] } },
+    where: OUTSTANDING_WHERE,
     include: { student: { select: { id: true, fullName: true, contactNumber: true } } },
     orderBy: { paymentDate: "asc" },
   });
@@ -109,17 +111,17 @@ export async function createPayment(user: SessionUser, input: z.infer<typeof pay
 }
 
 export async function updatePayment(user: SessionUser, id: string, input: z.infer<typeof paymentUpdateSchema>) {
-  const existing = await prisma.payment.findFirst({ where: { id, deletedAt: null }, include: { student: true } });
-  if (!existing) throw new ApiError(404, "Payment not found");
+  const existing = orNotFound(
+    await prisma.payment.findFirst({ where: { id, deletedAt: null }, include: { student: true } }),
+    "Payment"
+  );
   const { amount, paymentDate, ...rest } = input;
   const data: Record<string, unknown> = { ...rest };
   if (amount !== undefined) data.amountCents = amount;
   if (paymentDate !== undefined) data.paymentDate = parseDateInput(paymentDate);
 
   const payment = await prisma.payment.update({ where: { id }, data });
-  const changes = diffChanges(existing as unknown as Record<string, unknown>, data, [
-    "paymentType", "amountCents", "paymentDate", "method", "status", "periodMonth", "notes",
-  ]);
+  const changes = diffChanges(existing as unknown as Record<string, unknown>, data);
   await logAudit(user, {
     action: "UPDATE",
     entityType: "Payment",
@@ -132,8 +134,10 @@ export async function updatePayment(user: SessionUser, id: string, input: z.infe
 
 /** Payments are voided (soft-deleted), never removed — the financial trail stays intact. */
 export async function voidPayment(user: SessionUser, id: string) {
-  const existing = await prisma.payment.findFirst({ where: { id, deletedAt: null }, include: { student: true } });
-  if (!existing) throw new ApiError(404, "Payment not found");
+  const existing = orNotFound(
+    await prisma.payment.findFirst({ where: { id, deletedAt: null }, include: { student: true } }),
+    "Payment"
+  );
   await prisma.payment.update({ where: { id }, data: { deletedAt: new Date() } });
   await logAudit(user, {
     action: "DELETE",

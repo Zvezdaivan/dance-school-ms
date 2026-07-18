@@ -2,7 +2,7 @@ import Link from "next/link";
 import { can, requireUser } from "@/lib/auth";
 import { CLASS_STATUSES, DAYS_OF_WEEK, label } from "@/lib/constants";
 import { formatCents } from "@/lib/money";
-import { Badge, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, EmptyState, FilterSelect, PageHeader } from "@/components/ui";
 import { listClasses } from "@/server/services/classes";
 
 export default async function ClassesPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -23,13 +23,7 @@ export default async function ClassesPage(props: { searchParams: Promise<Record<
           <label className="label">Search</label>
           <input name="q" defaultValue={sp.q ?? ""} placeholder="Name or style…" className="input" />
         </div>
-        <div className="w-36">
-          <label className="label">Status</label>
-          <select name="status" defaultValue={sp.status ?? ""} className="input">
-            <option value="">All</option>
-            {CLASS_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
-          </select>
-        </div>
+        <FilterSelect name="status" title="Status" defaultValue={sp.status} values={CLASS_STATUSES} width="w-36" />
         <button className="btn">Apply</button>
         <Link href="/classes" className="btn">Clear</Link>
       </form>

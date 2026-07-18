@@ -1,5 +1,7 @@
 // All monetary amounts are stored as integer cents (HKD).
 
+import { DomainError } from "./api-error";
+
 /** Format cents as "HK$1,234.50". */
 export function formatCents(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return "—";
@@ -22,7 +24,7 @@ export function centsToDollars(cents: number): number {
 export function parseAmountToCents(input: string | number): number {
   const raw = String(input).replace(/,/g, "").trim();
   if (!/^-?\d+(\.\d{1,2})?$/.test(raw)) {
-    throw new Error(`Invalid amount: "${input}"`);
+    throw new DomainError(`Invalid amount: "${input}"`);
   }
   const negative = raw.startsWith("-");
   const [wholePart, fracPart = ""] = raw.replace("-", "").split(".");

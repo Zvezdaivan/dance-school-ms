@@ -27,15 +27,19 @@ export async function logAudit(user: SessionUser, entry: AuditEntry, db: Db = pr
   });
 }
 
-/** Field-level diff of two objects for the audit trail: { field: [old, new] }. */
+/**
+ * Field-level diff of two objects for the audit trail: { field: [old, new] }.
+ * Fields default to every key in the update payload, so new columns are
+ * audited automatically; pass `exclude` for noise fields (e.g. status resets).
+ */
 export function diffChanges<T extends Record<string, unknown>>(
   before: T,
   after: Partial<T>,
-  fields: (keyof T & string)[]
+  exclude: string[] = []
 ): Record<string, [unknown, unknown]> {
   const diff: Record<string, [unknown, unknown]> = {};
-  for (const field of fields) {
-    if (!(field in after)) continue;
+  for (const field of Object.keys(after)) {
+    if (exclude.includes(field)) continue;
     const oldVal = normalize(before[field]);
     const newVal = normalize(after[field]);
     if (oldVal !== newVal) diff[field] = [oldVal, newVal];

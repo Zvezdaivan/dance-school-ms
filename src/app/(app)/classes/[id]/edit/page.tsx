@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth";
+import { centsToDollars } from "@/lib/money";
 import { PageHeader } from "@/components/ui";
 import { ClassForm } from "@/components/ClassForm";
 import { getClass } from "@/server/services/classes";
@@ -24,7 +25,7 @@ export default async function EditClassPage(props: { params: Promise<{ id: strin
           endTime: cls.endTime,
           scheduleNotes: cls.scheduleNotes,
           capacity: String(cls.capacity),
-          fee: String(cls.feeCents / 100),
+          fee: String(centsToDollars(cls.feeCents)),
           feeType: cls.feeType,
           status: cls.status,
         }}

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { fmtDateTime } from "@/lib/dates";
-import { EmptyState, PageHeader, Pagination } from "@/components/ui";
+import { EmptyState, makeQs, PageHeader, Pagination } from "@/components/ui";
 
 const PAGE_SIZE = 50;
 
@@ -17,8 +17,7 @@ export default async function AuditLogsPage(props: { searchParams: Promise<Recor
     prisma.auditLog.findMany({ distinct: ["entityType"], select: { entityType: true }, orderBy: { entityType: "asc" } }),
   ]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const qs = (overrides: Record<string, string>) =>
-    "?" + new URLSearchParams({ ...(sp as Record<string, string>), ...overrides }).toString();
+  const qs = makeQs(sp);
 
   return (
     <>

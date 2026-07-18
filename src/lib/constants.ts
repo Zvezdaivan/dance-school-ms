@@ -7,11 +7,9 @@ export type Role = (typeof ROLES)[number];
 export const USER_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 
 export const STUDENT_STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED", "GRADUATED"] as const;
-export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 
 export const TEACHER_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 export const EMPLOYMENT_TYPES = ["HOURLY", "MONTHLY", "CONTRACTOR"] as const;
-export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 
 export const CLASS_LEVELS = ["BEGINNER", "INTERMEDIATE", "ADVANCED", "OPEN"] as const;
 export const CLASS_STATUSES = ["ACTIVE", "INACTIVE", "COMPLETED"] as const;

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { SessionUser } from "@/lib/auth";
-import { ApiError } from "@/lib/api-error";
+import { ApiError, orNotFound } from "@/lib/api-error";
 import { logAudit, diffChanges } from "@/lib/audit";
 import { parseDateInput } from "@/lib/dates";
 import { teacherCreateSchema, teacherUpdateSchema } from "@/lib/validation";
@@ -22,16 +22,22 @@ export async function listTeachers(params: { q?: string; status?: string; employ
 }
 
 export async function getTeacher(id: string) {
-  const teacher = await prisma.teacher.findFirst({
-    where: { id, deletedAt: null },
-    include: {
-      classes: { where: { deletedAt: null }, orderBy: { name: "asc" } },
-      workLogs: { where: { deletedAt: null }, orderBy: { workDate: "desc" }, take: 20, include: { class: true } },
-      payrolls: { orderBy: { month: "desc" }, take: 12 },
-    },
-  });
-  if (!teacher) throw new ApiError(404, "Teacher not found");
-  return teacher;
+  return orNotFound(
+    await prisma.teacher.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        classes: { where: { deletedAt: null }, orderBy: { name: "asc" } },
+        workLogs: {
+          where: { deletedAt: null },
+          orderBy: { workDate: "desc" },
+          take: 20,
+          include: { class: { select: { name: true } } },
+        },
+        payrolls: { orderBy: { month: "desc" }, take: 12 },
+      },
+    }),
+    "Teacher"
+  );
 }
 
 function toData(input: z.infer<typeof teacherCreateSchema>) {
@@ -56,8 +62,7 @@ export async function createTeacher(user: SessionUser, input: z.infer<typeof tea
 }
 
 export async function updateTeacher(user: SessionUser, id: string, input: z.infer<typeof teacherUpdateSchema>) {
-  const existing = await prisma.teacher.findFirst({ where: { id, deletedAt: null } });
-  if (!existing) throw new ApiError(404, "Teacher not found");
+  const existing = orNotFound(await prisma.teacher.findFirst({ where: { id, deletedAt: null } }), "Teacher");
   const { hourlyRate, monthlySalary, startDate, ...rest } = input;
   const data: Record<string, unknown> = { ...rest };
   if (hourlyRate !== undefined) data.hourlyRateCents = hourlyRate;
@@ -65,10 +70,7 @@ export async function updateTeacher(user: SessionUser, id: string, input: z.infe
   if (startDate !== undefined) data.startDate = parseDateInput(startDate);
 
   const teacher = await prisma.teacher.update({ where: { id }, data });
-  const changes = diffChanges(existing as Record<string, unknown>, data, [
-    "fullName", "contactNumber", "email", "employmentType", "hourlyRateCents", "monthlySalaryCents",
-    "bankName", "bankAccountName", "bankAccountNumber", "startDate", "status", "notes",
-  ]);
+  const changes = diffChanges(existing as Record<string, unknown>, data);
   await logAudit(user, {
     action: "UPDATE",
     entityType: "Teacher",
@@ -80,8 +82,7 @@ export async function updateTeacher(user: SessionUser, id: string, input: z.infe
 }
 
 export async function softDeleteTeacher(user: SessionUser, id: string) {
-  const existing = await prisma.teacher.findFirst({ where: { id, deletedAt: null } });
-  if (!existing) throw new ApiError(404, "Teacher not found");
+  const existing = orNotFound(await prisma.teacher.findFirst({ where: { id, deletedAt: null } }), "Teacher");
   const activeClasses = await prisma.danceClass.count({
     where: { teacherId: id, deletedAt: null, status: "ACTIVE" },
   });

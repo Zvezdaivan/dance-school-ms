@@ -1,7 +1,8 @@
 "use client";
 
 import { ErrorBanner, Field, useJsonSubmit } from "@/components/forms";
-import { ADJUSTMENT_TYPES, PAYMENT_METHODS, label } from "@/lib/constants";
+import { EnumOptions } from "@/components/ui";
+import { ADJUSTMENT_TYPES, PAYMENT_METHODS } from "@/lib/constants";
 
 /** Generate/regenerate draft payroll for a month (all teachers or one). */
 export function PayrollGenerateForm({ teachers, defaultMonth }: { teachers: { id: string; fullName: string }[]; defaultMonth: string }) {
@@ -51,9 +52,7 @@ export function MarkPaidForm({ payrollId }: { payrollId: string }) {
         <div className="w-44">
           <Field label="Method">
             <select name="paymentMethod" defaultValue="BANK_TRANSFER" className="input">
-              {PAYMENT_METHODS.filter((m) => m !== "CREDIT_CARD").map((m) => (
-                <option key={m} value={m}>{label(m)}</option>
-              ))}
+              <EnumOptions values={PAYMENT_METHODS.filter((m) => m !== "CREDIT_CARD")} />
             </select>
           </Field>
         </div>
@@ -73,7 +72,7 @@ export function AdjustmentForm({ payrollId }: { payrollId: string }) {
         <div className="w-36">
           <Field label="Type">
             <select name="type" defaultValue="ALLOWANCE" className="input">
-              {ADJUSTMENT_TYPES.map((t) => <option key={t} value={t}>{label(t)}</option>)}
+              <EnumOptions values={ADJUSTMENT_TYPES} />
             </select>
           </Field>
         </div>

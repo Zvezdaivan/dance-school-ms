@@ -89,6 +89,63 @@ export function Pagination({ page, pages, makeHref }: { page: number; pages: num
   );
 }
 
+/** <option> list for an enum value set, labelled via constants.LABELS. */
+export function EnumOptions({ values }: { values: readonly string[] }) {
+  return (
+    <>
+      {values.map((v) => (
+        <option key={v} value={v}>
+          {label(v)}
+        </option>
+      ))}
+    </>
+  );
+}
+
+/** One labelled <select> for a GET filter bar, with an "All" empty option. */
+export function FilterSelect({
+  name,
+  title,
+  defaultValue,
+  values,
+  width = "w-40",
+}: {
+  name: string;
+  title: string;
+  defaultValue?: string;
+  values: readonly string[];
+  width?: string;
+}) {
+  return (
+    <div className={width}>
+      <label className="label">{title}</label>
+      <select name={name} defaultValue={defaultValue ?? ""} className="input">
+        <option value="">All</option>
+        <EnumOptions values={values} />
+      </select>
+    </div>
+  );
+}
+
+/** Card with the standard section heading. */
+export function SectionCard({ title, action, children }: { title: ReactNode; action?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="card">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Query-string builder for list pages: preserves current params, applies overrides. */
+export function makeQs(sp: Record<string, string | undefined>, base: Record<string, string> = {}) {
+  return (overrides: Record<string, string>) =>
+    "?" + new URLSearchParams({ ...(sp as Record<string, string>), ...base, ...overrides }).toString();
+}
+
 export function DetailRow({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div className="flex justify-between gap-4 border-b border-gray-100 py-2 text-sm last:border-b-0">

@@ -1,7 +1,8 @@
 "use client";
 
 import { ErrorBanner, Field, useJsonSubmit } from "@/components/forms";
-import { PAYMENT_METHODS, PAYMENT_STATUSES, PAYMENT_TYPES, label } from "@/lib/constants";
+import { EnumOptions } from "@/components/ui";
+import { PAYMENT_METHODS, PAYMENT_STATUSES, PAYMENT_TYPES } from "@/lib/constants";
 
 export function PaymentForm({
   students,
@@ -31,7 +32,7 @@ export function PaymentForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Payment type">
           <select name="paymentType" defaultValue="MONTHLY_TUITION" className="input">
-            {PAYMENT_TYPES.map((t) => <option key={t} value={t}>{label(t)}</option>)}
+            <EnumOptions values={PAYMENT_TYPES} />
           </select>
         </Field>
         <Field label="Amount (HK$)">
@@ -42,12 +43,12 @@ export function PaymentForm({
         </Field>
         <Field label="Method">
           <select name="method" defaultValue="FPS" className="input">
-            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{label(m)}</option>)}
+            <EnumOptions values={PAYMENT_METHODS} />
           </select>
         </Field>
         <Field label="Status" hint="Use Pending to record an expected payment (tracked as outstanding)">
           <select name="status" defaultValue="PAID" className="input">
-            {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
+            <EnumOptions values={PAYMENT_STATUSES} />
           </select>
         </Field>
         <Field label="Tuition period" hint="For monthly tuition, e.g. 2026-07">

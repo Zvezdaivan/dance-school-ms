@@ -1,9 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { SessionUser } from "@/lib/auth";
-import { ApiError } from "@/lib/api-error";
+import { scopeTeacherId, SessionUser } from "@/lib/auth";
+import { ApiError, orNotFound } from "@/lib/api-error";
 import { logAudit, diffChanges } from "@/lib/audit";
-import { monthOf, monthRange, parseDateInput } from "@/lib/dates";
+import { fmtDate, minutesToHoursLabel, monthOf, monthRange, parseDateInput } from "@/lib/dates";
+import { paginate, pageCount } from "@/lib/paginate";
 import { computePayableMinutes } from "@/lib/payroll-calc";
 import { workLogCreateSchema, workLogUpdateSchema } from "@/lib/validation";
 import { z } from "zod";
@@ -16,15 +17,8 @@ export interface WorkLogListParams {
   pageSize?: number;
 }
 
-/** Teachers are always scoped to their own logs. */
-function scopeTeacherId(user: SessionUser, requested?: string): string | undefined {
-  if (user.role === "TEACHER") return user.teacherId ?? "__none__";
-  return requested;
-}
-
 export async function listWorkLogs(user: SessionUser, params: WorkLogListParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 25));
+  const { page, pageSize, skip, take } = paginate(params, 25);
   const where: Prisma.WorkLogWhereInput = { deletedAt: null };
   const teacherId = scopeTeacherId(user, params.teacherId);
   if (teacherId) where.teacherId = teacherId;
@@ -39,8 +33,8 @@ export async function listWorkLogs(user: SessionUser, params: WorkLogListParams)
       where,
       include: { teacher: { select: { fullName: true } }, class: { select: { name: true } } },
       orderBy: [{ workDate: "desc" }, { startTime: "desc" }],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      skip,
+      take,
     }),
     prisma.workLog.aggregate({ where: { ...where, approvalStatus: "APPROVED" }, _sum: { payableMinutes: true } }),
   ]);
@@ -49,9 +43,20 @@ export async function listWorkLogs(user: SessionUser, params: WorkLogListParams)
     total,
     page,
     pageSize,
-    pages: Math.max(1, Math.ceil(total / pageSize)),
+    pages: pageCount(total, pageSize),
     approvedMinutes: minuteSum._sum.payableMinutes ?? 0,
   };
+}
+
+/** Single work log, teacher-scoped — for the edit page. */
+export async function getWorkLog(user: SessionUser, id: string) {
+  return orNotFound(
+    await prisma.workLog.findFirst({
+      where: { id, deletedAt: null, teacherId: scopeTeacherId(user) },
+      include: { teacher: { select: { fullName: true } } },
+    }),
+    "Work log"
+  );
 }
 
 /** Monthly summary per teacher (for review/approval screens). */
@@ -94,7 +99,7 @@ async function assertMonthOpen(teacherId: string, workDate: Date) {
 }
 
 export async function createWorkLog(user: SessionUser, input: z.infer<typeof workLogCreateSchema>) {
-  const teacherId = user.role === "TEACHER" ? (user.teacherId ?? "__none__") : input.teacherId;
+  const teacherId = scopeTeacherId(user, input.teacherId) ?? input.teacherId;
   if (user.role === "TEACHER" && input.teacherId && input.teacherId !== teacherId) {
     throw new ApiError(403, "Teachers can only log their own hours");
   }
@@ -120,17 +125,19 @@ export async function createWorkLog(user: SessionUser, input: z.infer<typeof wor
     action: "CREATE",
     entityType: "WorkLog",
     entityId: log.id,
-    summary: `Logged ${(payableMinutes / 60).toFixed(2)}h for ${teacher.fullName} on ${input.workDate}`,
+    summary: `Logged ${minutesToHoursLabel(payableMinutes)}h for ${teacher.fullName} on ${input.workDate}`,
   });
   return log;
 }
 
 export async function updateWorkLog(user: SessionUser, id: string, input: z.infer<typeof workLogUpdateSchema>) {
-  const existing = await prisma.workLog.findFirst({
-    where: { id, deletedAt: null },
-    include: { teacher: { select: { fullName: true } } },
-  });
-  if (!existing) throw new ApiError(404, "Work log not found");
+  const existing = orNotFound(
+    await prisma.workLog.findFirst({
+      where: { id, deletedAt: null },
+      include: { teacher: { select: { fullName: true } } },
+    }),
+    "Work log"
+  );
   if (user.role === "TEACHER") {
     if (existing.teacherId !== user.teacherId) throw new ApiError(403, "Teachers can only edit their own hours");
     if (existing.approvalStatus !== "PENDING") throw new ApiError(409, "This record has been reviewed and can no longer be edited");
@@ -168,24 +175,26 @@ export async function updateWorkLog(user: SessionUser, id: string, input: z.infe
   };
   const log = await prisma.workLog.update({ where: { id }, data });
   const changes = diffChanges(existing as unknown as Record<string, unknown>, data, [
-    "workDate", "startTime", "endTime", "breakMinutes", "payableMinutes", "adjustedMinutes", "adjustmentReason", "remarks",
+    "approvalStatus", "approvedById", "approvedAt", // routine reset noise, not user edits
   ]);
   await logAudit(user, {
     action: "UPDATE",
     entityType: "WorkLog",
     entityId: id,
-    summary: `Updated work log for ${existing.teacher.fullName} (${existing.workDate.toISOString().slice(0, 10)}) — reset to pending`,
+    summary: `Updated work log for ${existing.teacher.fullName} (${fmtDate(existing.workDate)}) — reset to pending`,
     changes,
   });
   return log;
 }
 
 export async function decideWorkLog(user: SessionUser, id: string, decision: "APPROVED" | "REJECTED") {
-  const existing = await prisma.workLog.findFirst({
-    where: { id, deletedAt: null },
-    include: { teacher: { select: { fullName: true } } },
-  });
-  if (!existing) throw new ApiError(404, "Work log not found");
+  const existing = orNotFound(
+    await prisma.workLog.findFirst({
+      where: { id, deletedAt: null },
+      include: { teacher: { select: { fullName: true } } },
+    }),
+    "Work log"
+  );
   await assertMonthOpen(existing.teacherId, existing.workDate);
 
   const log = await prisma.workLog.update({
@@ -196,17 +205,19 @@ export async function decideWorkLog(user: SessionUser, id: string, decision: "AP
     action: decision === "APPROVED" ? "APPROVE" : "REJECT",
     entityType: "WorkLog",
     entityId: id,
-    summary: `${decision === "APPROVED" ? "Approved" : "Rejected"} ${(existing.payableMinutes / 60).toFixed(2)}h for ${existing.teacher.fullName} on ${existing.workDate.toISOString().slice(0, 10)}`,
+    summary: `${decision === "APPROVED" ? "Approved" : "Rejected"} ${minutesToHoursLabel(existing.payableMinutes)}h for ${existing.teacher.fullName} on ${fmtDate(existing.workDate)}`,
   });
   return log;
 }
 
 export async function softDeleteWorkLog(user: SessionUser, id: string) {
-  const existing = await prisma.workLog.findFirst({
-    where: { id, deletedAt: null },
-    include: { teacher: { select: { fullName: true } } },
-  });
-  if (!existing) throw new ApiError(404, "Work log not found");
+  const existing = orNotFound(
+    await prisma.workLog.findFirst({
+      where: { id, deletedAt: null },
+      include: { teacher: { select: { fullName: true } } },
+    }),
+    "Work log"
+  );
   if (user.role === "TEACHER") {
     if (existing.teacherId !== user.teacherId) throw new ApiError(403, "Teachers can only remove their own hours");
     if (existing.approvalStatus !== "PENDING") throw new ApiError(409, "Reviewed records cannot be removed");
@@ -217,6 +228,6 @@ export async function softDeleteWorkLog(user: SessionUser, id: string) {
     action: "DELETE",
     entityType: "WorkLog",
     entityId: id,
-    summary: `Deleted work log for ${existing.teacher.fullName} on ${existing.workDate.toISOString().slice(0, 10)}`,
+    summary: `Deleted work log for ${existing.teacher.fullName} on ${fmtDate(existing.workDate)}`,
   });
 }

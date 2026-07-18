@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { SessionUser } from "@/lib/auth";
-import { ApiError } from "@/lib/api-error";
+import { scopeTeacherId, SessionUser } from "@/lib/auth";
+import { ApiError, orNotFound } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit";
 import { monthRange, parseDateInput } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
@@ -11,8 +11,7 @@ import { z } from "zod";
 
 export async function listPayrolls(user: SessionUser, params: { month?: string; status?: string; teacherId?: string }) {
   const where: Prisma.PayrollRecordWhereInput = {};
-  if (user.role === "TEACHER") where.teacherId = user.teacherId ?? "__none__";
-  else if (params.teacherId) where.teacherId = params.teacherId;
+  where.teacherId = scopeTeacherId(user, params.teacherId);
   if (params.month) where.month = params.month;
   if (params.status) where.status = params.status;
   const [records, sums] = await Promise.all([
@@ -31,11 +30,13 @@ export async function listPayrolls(user: SessionUser, params: { month?: string; 
 }
 
 export async function getPayroll(user: SessionUser, id: string) {
-  const record = await prisma.payrollRecord.findUnique({
-    where: { id },
-    include: { teacher: true, adjustments: { orderBy: { createdAt: "asc" } } },
-  });
-  if (!record) throw new ApiError(404, "Payroll record not found");
+  const record = orNotFound(
+    await prisma.payrollRecord.findUnique({
+      where: { id },
+      include: { teacher: true, adjustments: { orderBy: { createdAt: "asc" } } },
+    }),
+    "Payroll record"
+  );
   if (user.role === "TEACHER" && record.teacherId !== user.teacherId) {
     throw new ApiError(403, "You can only view your own payroll");
   }
@@ -55,24 +56,33 @@ export async function generatePayroll(user: SessionUser, month: string, teacherI
     where: teacherId ? { id: teacherId, deletedAt: null } : { deletedAt: null, status: "ACTIVE" },
   });
   if (teachers.length === 0) throw new ApiError(400, "No matching teachers found");
+  const teacherIds = teachers.map((t) => t.id);
+
+  // Batch the per-teacher reads: existing records + approved minutes in two queries.
+  const [existingRecords, minuteSums] = await Promise.all([
+    prisma.payrollRecord.findMany({
+      where: { month, teacherId: { in: teacherIds } },
+      include: { adjustments: true },
+    }),
+    prisma.workLog.groupBy({
+      by: ["teacherId"],
+      where: { teacherId: { in: teacherIds }, deletedAt: null, approvalStatus: "APPROVED", workDate: { gte: start, lt: end } },
+      _sum: { payableMinutes: true },
+    }),
+  ]);
+  const existingByTeacher = new Map(existingRecords.map((r) => [r.teacherId, r]));
+  const minutesByTeacher = new Map(minuteSums.map((m) => [m.teacherId, m._sum.payableMinutes ?? 0]));
 
   const results = { created: [] as string[], updated: [] as string[], skipped: [] as string[] };
 
   for (const teacher of teachers) {
-    const existing = await prisma.payrollRecord.findUnique({
-      where: { teacherId_month: { teacherId: teacher.id, month } },
-      include: { adjustments: true },
-    });
+    const existing = existingByTeacher.get(teacher.id);
     if (existing && existing.status !== "DRAFT") {
       results.skipped.push(`${teacher.fullName} (already ${existing.status.toLowerCase()})`);
       continue;
     }
 
-    const minuteSum = await prisma.workLog.aggregate({
-      where: { teacherId: teacher.id, deletedAt: null, approvalStatus: "APPROVED", workDate: { gte: start, lt: end } },
-      _sum: { payableMinutes: true },
-    });
-    const totalMinutes = minuteSum._sum.payableMinutes ?? 0;
+    const totalMinutes = minutesByTeacher.get(teacher.id) ?? 0;
 
     // Hourly teachers with no approved hours produce no payroll line.
     if (teacher.employmentType !== "MONTHLY" && totalMinutes === 0 && !existing) {
@@ -130,8 +140,10 @@ async function recalcTotals(payrollId: string) {
 }
 
 export async function addAdjustment(user: SessionUser, payrollId: string, input: z.infer<typeof payrollAdjustmentSchema>) {
-  const record = await prisma.payrollRecord.findUnique({ where: { id: payrollId }, include: { teacher: true } });
-  if (!record) throw new ApiError(404, "Payroll record not found");
+  const record = orNotFound(
+    await prisma.payrollRecord.findUnique({ where: { id: payrollId }, include: { teacher: true } }),
+    "Payroll record"
+  );
   if (record.status !== "DRAFT") throw new ApiError(409, "Adjustments can only be added to draft payroll (revert to draft first)");
 
   await prisma.payrollAdjustment.create({
@@ -172,8 +184,10 @@ const TRANSITIONS: Record<string, string[]> = {
 };
 
 export async function setPayrollStatus(user: SessionUser, id: string, input: z.infer<typeof payrollStatusSchema>) {
-  const record = await prisma.payrollRecord.findUnique({ where: { id }, include: { teacher: true } });
-  if (!record) throw new ApiError(404, "Payroll record not found");
+  const record = orNotFound(
+    await prisma.payrollRecord.findUnique({ where: { id }, include: { teacher: true } }),
+    "Payroll record"
+  );
   if (!TRANSITIONS[record.status]?.includes(input.status)) {
     throw new ApiError(409, `Cannot move payroll from ${record.status} to ${input.status}`);
   }

@@ -12,10 +12,9 @@ import { studentOptions } from "@/server/services/students";
 export default async function ClassDetailPage(props: { params: Promise<{ id: string }> }) {
   const user = await requireUser("classes.read");
   const { id } = await props.params;
-  const cls = await getClass(user, id);
   const writable = can(user, "classes.write");
+  const [cls, students] = await Promise.all([getClass(user, id), writable ? studentOptions() : []]);
   const activeEnrollments = cls.enrollments.filter((e) => e.status === "ACTIVE");
-  const students = writable ? await studentOptions() : [];
   const enrolledIds = new Set(activeEnrollments.map((e) => e.studentId));
   const enrollable = students.filter((s) => !enrolledIds.has(s.id));
 

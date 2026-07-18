@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
-import { ApiError } from "./api-error";
+import { ApiError, DomainError } from "./api-error";
 
 /**
  * Wrap a route handler with consistent error handling:
@@ -29,6 +29,9 @@ export function handleRoute<Args extends unknown[]>(
       if (err instanceof ApiError) {
         return NextResponse.json({ error: err.message }, { status: err.status });
       }
+      if (err instanceof DomainError) {
+        return NextResponse.json({ error: err.message }, { status: 400 });
+      }
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         return NextResponse.json({ error: "A record with the same unique value already exists" }, { status: 409 });
       }
@@ -38,10 +41,6 @@ export function handleRoute<Args extends unknown[]>(
           { error: "A selected item no longer exists — refresh the page and try again" },
           { status: 400 }
         );
-      }
-      if (err instanceof Error && /^(Invalid|End time|Break|Adjustment|Unknown adjustment)/.test(err.message)) {
-        // Domain validation errors thrown from lib functions
-        return NextResponse.json({ error: err.message }, { status: 400 });
       }
       console.error("[api] unhandled error:", err);
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });

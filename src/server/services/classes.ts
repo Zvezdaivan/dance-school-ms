@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { SessionUser } from "@/lib/auth";
-import { ApiError } from "@/lib/api-error";
+import { scopeTeacherId, SessionUser } from "@/lib/auth";
+import { ApiError, orNotFound } from "@/lib/api-error";
 import { logAudit, diffChanges } from "@/lib/audit";
 import { parseDateInput } from "@/lib/dates";
 import {
@@ -14,9 +14,7 @@ import { z } from "zod";
 
 export async function listClasses(user: SessionUser, params: { q?: string; status?: string; teacherId?: string }) {
   const where: Prisma.DanceClassWhereInput = { deletedAt: null };
-  // Teachers only see their own classes.
-  if (user.role === "TEACHER") where.teacherId = user.teacherId ?? "__none__";
-  else if (params.teacherId) where.teacherId = params.teacherId;
+  where.teacherId = scopeTeacherId(user, params.teacherId);
   if (params.status) where.status = params.status;
   if (params.q) where.OR = [{ name: { contains: params.q } }, { style: { contains: params.q } }];
   const classes = await prisma.danceClass.findMany({
@@ -31,17 +29,16 @@ export async function listClasses(user: SessionUser, params: { q?: string; statu
 }
 
 export async function getClass(user: SessionUser, id: string) {
-  const where: Prisma.DanceClassWhereInput = { id, deletedAt: null };
-  if (user.role === "TEACHER") where.teacherId = user.teacherId ?? "__none__";
-  const cls = await prisma.danceClass.findFirst({
-    where,
-    include: {
-      teacher: true,
-      enrollments: { include: { student: true }, orderBy: [{ status: "asc" }, { enrolledAt: "desc" }] },
-    },
-  });
-  if (!cls) throw new ApiError(404, "Class not found");
-  return cls;
+  return orNotFound(
+    await prisma.danceClass.findFirst({
+      where: { id, deletedAt: null, teacherId: scopeTeacherId(user) },
+      include: {
+        teacher: true,
+        enrollments: { include: { student: true }, orderBy: [{ status: "asc" }, { enrolledAt: "desc" }] },
+      },
+    }),
+    "Class"
+  );
 }
 
 function toData(input: z.infer<typeof classCreateSchema>) {
@@ -63,17 +60,13 @@ export async function createClass(user: SessionUser, input: z.infer<typeof class
 }
 
 export async function updateClass(user: SessionUser, id: string, input: z.infer<typeof classUpdateSchema>) {
-  const existing = await prisma.danceClass.findFirst({ where: { id, deletedAt: null } });
-  if (!existing) throw new ApiError(404, "Class not found");
+  const existing = orNotFound(await prisma.danceClass.findFirst({ where: { id, deletedAt: null } }), "Class");
   const { fee, ...rest } = input;
   const data: Record<string, unknown> = { ...rest };
   if (fee !== undefined) data.feeCents = fee;
 
   const cls = await prisma.danceClass.update({ where: { id }, data });
-  const changes = diffChanges(existing as Record<string, unknown>, data, [
-    "name", "style", "level", "teacherId", "dayOfWeek", "startTime", "endTime",
-    "scheduleNotes", "capacity", "feeCents", "feeType", "status",
-  ]);
+  const changes = diffChanges(existing as Record<string, unknown>, data);
   await logAudit(user, {
     action: "UPDATE",
     entityType: "DanceClass",
@@ -85,8 +78,7 @@ export async function updateClass(user: SessionUser, id: string, input: z.infer<
 }
 
 export async function softDeleteClass(user: SessionUser, id: string) {
-  const existing = await prisma.danceClass.findFirst({ where: { id, deletedAt: null } });
-  if (!existing) throw new ApiError(404, "Class not found");
+  const existing = orNotFound(await prisma.danceClass.findFirst({ where: { id, deletedAt: null } }), "Class");
   await prisma.$transaction([
     prisma.danceClass.update({ where: { id }, data: { deletedAt: new Date(), status: "INACTIVE" } }),
     prisma.enrollment.updateMany({
@@ -161,10 +153,8 @@ export async function updateEnrollment(user: SessionUser, id: string, input: z.i
 }
 
 export async function classOptions(user: SessionUser) {
-  const where: Prisma.DanceClassWhereInput = { deletedAt: null, status: "ACTIVE" };
-  if (user.role === "TEACHER") where.teacherId = user.teacherId ?? "__none__";
   return prisma.danceClass.findMany({
-    where,
+    where: { deletedAt: null, status: "ACTIVE", teacherId: scopeTeacherId(user) },
     select: { id: true, name: true, style: true, teacherId: true },
     orderBy: { name: "asc" },
   });

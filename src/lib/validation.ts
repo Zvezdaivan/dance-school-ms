@@ -45,21 +45,23 @@ const positiveAmountCents = amountCents.pipe(z.number().int().positive("Amount m
 /** Blank/whitespace form values become undefined BEFORE validation runs. */
 const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
 
-const optionalTrimmed = z.preprocess(
-  blankToUndefined,
-  z.string().transform((s) => s.trim()).pipe(z.string().max(2000)).optional()
-);
+/** Make any schema optional AND treat blank form values ("") as absent. */
+const blankable = <S extends z.ZodTypeAny>(schema: S) => z.preprocess(blankToUndefined, schema.optional());
+
+const optionalTrimmed = blankable(z.string().transform((s) => s.trim()).pipe(z.string().max(2000)));
 
 /**
  * Optional foreign-key id from a <select> — "" (e.g. "Not linked to a class")
  * must become undefined, never an empty-string id that violates FK constraints.
  */
-const optionalId = z.preprocess(blankToUndefined, z.string().min(1).optional());
+const optionalId = blankable(z.string().min(1));
+
+const emailField = z.string().trim().toLowerCase().pipe(z.email("Enter a valid email"));
 
 // --- auth --------------------------------------------------------------------
 
 export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email")),
+  email: emailField,
   password: z.string().min(1, "Password is required"),
 });
 
@@ -68,8 +70,8 @@ export const loginSchema = z.object({
 export const studentCreateSchema = z.object({
   fullName: z.string().trim().min(1, "Name is required").max(200),
   contactNumber: z.string().trim().min(1, "Contact number is required").max(50),
-  email: z.string().trim().toLowerCase().pipe(z.email()).optional().or(z.literal("").transform(() => undefined)),
-  dateOfBirth: dateStr.optional().or(z.literal("").transform(() => undefined)),
+  email: blankable(emailField),
+  dateOfBirth: blankable(dateStr),
   guardianName: optionalTrimmed,
   guardianPhone: optionalTrimmed,
   address: optionalTrimmed,
@@ -82,21 +84,21 @@ export const studentUpdateSchema = studentCreateSchema.partial();
 
 // --- teachers ----------------------------------------------------------------
 
-export const teacherCreateSchema = z
-  .object({
-    fullName: z.string().trim().min(1, "Name is required").max(200),
-    contactNumber: z.string().trim().min(1, "Contact number is required").max(50),
-    email: z.string().trim().toLowerCase().pipe(z.email()).optional().or(z.literal("").transform(() => undefined)),
-    employmentType: z.enum(EMPLOYMENT_TYPES),
-    hourlyRate: positiveAmountCents.optional().or(z.literal("").transform(() => undefined)),
-    monthlySalary: positiveAmountCents.optional().or(z.literal("").transform(() => undefined)),
-    bankName: optionalTrimmed,
-    bankAccountName: optionalTrimmed,
-    bankAccountNumber: optionalTrimmed,
-    startDate: dateStr,
-    status: z.enum(TEACHER_STATUSES).default("ACTIVE"),
-    notes: optionalTrimmed,
-  })
+const teacherBase = z.object({
+  fullName: z.string().trim().min(1, "Name is required").max(200),
+  contactNumber: z.string().trim().min(1, "Contact number is required").max(50),
+  email: blankable(emailField),
+  employmentType: z.enum(EMPLOYMENT_TYPES),
+  hourlyRate: blankable(positiveAmountCents),
+  monthlySalary: blankable(positiveAmountCents),
+  bankName: optionalTrimmed,
+  bankAccountName: optionalTrimmed,
+  bankAccountNumber: optionalTrimmed,
+  startDate: dateStr,
+  status: z.enum(TEACHER_STATUSES).default("ACTIVE"),
+  notes: optionalTrimmed,
+});
+export const teacherCreateSchema = teacherBase
   .refine((t) => t.employmentType !== "MONTHLY" || t.monthlySalary !== undefined, {
     message: "Monthly-salaried teachers need a monthly salary",
     path: ["monthlySalary"],
@@ -105,20 +107,7 @@ export const teacherCreateSchema = z
     message: "Hourly/contractor teachers need an hourly rate",
     path: ["hourlyRate"],
   });
-export const teacherUpdateSchema = z.object({
-  fullName: z.string().trim().min(1).max(200).optional(),
-  contactNumber: z.string().trim().min(1).max(50).optional(),
-  email: z.string().trim().toLowerCase().pipe(z.email()).optional().or(z.literal("").transform(() => undefined)),
-  employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
-  hourlyRate: positiveAmountCents.optional().or(z.literal("").transform(() => undefined)),
-  monthlySalary: positiveAmountCents.optional().or(z.literal("").transform(() => undefined)),
-  bankName: optionalTrimmed,
-  bankAccountName: optionalTrimmed,
-  bankAccountNumber: optionalTrimmed,
-  startDate: dateStr.optional(),
-  status: z.enum(TEACHER_STATUSES).optional(),
-  notes: optionalTrimmed,
-});
+export const teacherUpdateSchema = teacherBase.partial();
 
 // --- classes & enrollment ------------------------------------------------------
 
@@ -127,9 +116,9 @@ export const classCreateSchema = z.object({
   style: z.string().trim().min(1, "Style is required").max(100),
   level: z.enum(CLASS_LEVELS),
   teacherId: z.string().min(1, "Teacher is required"),
-  dayOfWeek: z.coerce.number().int().min(0).max(6).optional().or(z.literal("").transform(() => undefined)),
-  startTime: timeStr.optional().or(z.literal("").transform(() => undefined)),
-  endTime: timeStr.optional().or(z.literal("").transform(() => undefined)),
+  dayOfWeek: blankable(z.coerce.number().int().min(0).max(6)),
+  startTime: blankable(timeStr),
+  endTime: blankable(timeStr),
   scheduleNotes: optionalTrimmed,
   capacity: z.coerce.number().int().min(1, "Capacity must be at least 1").max(500),
   fee: positiveAmountCents,
@@ -146,7 +135,7 @@ export const enrollmentCreateSchema = z.object({
 });
 export const enrollmentUpdateSchema = z.object({
   status: z.enum(ENROLLMENT_STATUSES),
-  droppedAt: dateStr.optional().or(z.literal("").transform(() => undefined)),
+  droppedAt: blankable(dateStr),
   notes: optionalTrimmed,
 });
 
@@ -160,7 +149,7 @@ export const paymentCreateSchema = z.object({
   method: z.enum(PAYMENT_METHODS),
   status: z.enum(PAYMENT_STATUSES).default("PAID"),
   receiptNumber: optionalTrimmed, // auto-generated when blank
-  periodMonth: monthStr.optional().or(z.literal("").transform(() => undefined)),
+  periodMonth: blankable(monthStr),
   notes: optionalTrimmed,
 });
 export const paymentUpdateSchema = z.object({
@@ -169,7 +158,7 @@ export const paymentUpdateSchema = z.object({
   paymentDate: dateStr.optional(),
   method: z.enum(PAYMENT_METHODS).optional(),
   status: z.enum(PAYMENT_STATUSES).optional(),
-  periodMonth: monthStr.optional().or(z.literal("").transform(() => undefined)),
+  periodMonth: blankable(monthStr),
   notes: optionalTrimmed,
 });
 
@@ -183,7 +172,6 @@ export const attendanceBulkSchema = z.object({
       z.object({
         studentId: z.string().min(1),
         status: z.enum(ATTENDANCE_STATUSES),
-        notes: optionalTrimmed,
       })
     )
     .min(1, "At least one attendance record is required"),
@@ -207,7 +195,7 @@ export const workLogUpdateSchema = z.object({
   endTime: timeStr.optional(),
   breakMinutes: z.coerce.number().int().min(0).max(480).optional(),
   remarks: optionalTrimmed,
-  adjustedMinutes: z.coerce.number().int().min(1).optional().or(z.literal("").transform(() => undefined)),
+  adjustedMinutes: blankable(z.coerce.number().int().min(1)),
   adjustmentReason: optionalTrimmed,
 });
 export const workLogDecisionSchema = z.object({
@@ -222,8 +210,8 @@ export const payrollGenerateSchema = z.object({
 });
 export const payrollStatusSchema = z.object({
   status: z.enum(PAYROLL_STATUSES),
-  paymentDate: dateStr.optional().or(z.literal("").transform(() => undefined)),
-  paymentMethod: z.enum(PAYMENT_METHODS).optional().or(z.literal("").transform(() => undefined)),
+  paymentDate: blankable(dateStr),
+  paymentMethod: blankable(z.enum(PAYMENT_METHODS)),
   notes: optionalTrimmed,
 });
 export const payrollAdjustmentSchema = z.object({
@@ -235,7 +223,7 @@ export const payrollAdjustmentSchema = z.object({
 // --- users ----------------------------------------------------------------
 
 export const userCreateSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email")),
+  email: emailField,
   name: z.string().trim().min(1, "Name is required").max(200),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(ROLES),
@@ -243,7 +231,7 @@ export const userCreateSchema = z.object({
 });
 export const userUpdateSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
-  password: z.string().min(8, "Password must be at least 8 characters").optional().or(z.literal("").transform(() => undefined)),
+  password: blankable(z.string().min(8, "Password must be at least 8 characters")),
   role: z.enum(ROLES).optional(),
   status: z.enum(USER_STATUSES).optional(),
   teacherId: optionalId,

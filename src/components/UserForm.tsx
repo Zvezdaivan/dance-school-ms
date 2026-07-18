@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { ErrorBanner, Field, useJsonSubmit } from "@/components/forms";
-import { ROLES, label } from "@/lib/constants";
+import { EnumOptions } from "@/components/ui";
+import { ROLES } from "@/lib/constants";
 
 export function UserForm({ teachers }: { teachers: { id: string; fullName: string }[] }) {
   const [role, setRole] = useState("STAFF");
@@ -22,7 +23,7 @@ export function UserForm({ teachers }: { teachers: { id: string; fullName: strin
         </Field>
         <Field label="Role">
           <select name="role" value={role} onChange={(e) => setRole(e.target.value)} className="input">
-            {ROLES.map((r) => <option key={r} value={r}>{label(r)}</option>)}
+            <EnumOptions values={ROLES} />
           </select>
         </Field>
         {role === "TEACHER" && (

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
@@ -65,15 +66,20 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
  * The signed token only proves who logged in; the account is re-checked
  * against the database on every request so that deactivated/deleted users
  * lose access immediately and role changes take effect without re-login.
+ * Wrapped in React cache() so layout + page + nested components share one
+ * verification and one DB query per request.
  */
-export async function getSessionUser(): Promise<SessionUser | null> {
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const payload = await verifySessionToken(token);
   if (!payload) return null;
   const { prisma } = await import("./db");
-  const dbUser = await prisma.user.findUnique({ where: { id: payload.id } });
+  const dbUser = await prisma.user.findUnique({
+    where: { id: payload.id },
+    select: { id: true, email: true, name: true, role: true, status: true, teacherId: true },
+  });
   if (!dbUser || dbUser.status !== "ACTIVE") return null;
   return {
     id: dbUser.id,
@@ -82,7 +88,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     role: dbUser.role as Role,
     teacherId: dbUser.teacherId,
   };
-}
+});
 
 /**
  * For server components/pages: redirect to /login when unauthenticated,
@@ -107,4 +113,15 @@ export async function requireApiUser(permission?: Permission): Promise<SessionUs
 
 export function can(user: SessionUser, permission: Permission): boolean {
   return roleCan(user.role, permission);
+}
+
+/**
+ * Teacher row-scoping (single implementation of the AGENTS.md rule):
+ * TEACHER accounts are always restricted to their own teacherId; other roles
+ * get whatever filter they asked for. The sentinel matches no real id, so a
+ * teacher account without a linked record sees nothing rather than everything.
+ */
+export function scopeTeacherId(user: SessionUser, requested?: string): string | undefined {
+  if (user.role === "TEACHER") return user.teacherId ?? "__none__";
+  return requested;
 }

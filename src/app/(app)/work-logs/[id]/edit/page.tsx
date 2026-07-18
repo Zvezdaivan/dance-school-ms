@@ -1,22 +1,15 @@
-import { notFound } from "next/navigation";
 import { can, requireUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import { toDateInput } from "@/lib/dates";
 import { PageHeader } from "@/components/ui";
 import { WorkLogForm } from "@/components/WorkLogForm";
 import { ActionButton } from "@/components/actions";
+import { getWorkLog } from "@/server/services/worklogs";
 import { classOptions } from "@/server/services/classes";
 
 export default async function EditWorkLogPage(props: { params: Promise<{ id: string }> }) {
   const user = await requireUser("worklogs.write");
   const { id } = await props.params;
-  const log = await prisma.workLog.findFirst({
-    where: { id, deletedAt: null },
-    include: { teacher: { select: { fullName: true } } },
-  });
-  if (!log) notFound();
-  if (user.role === "TEACHER" && log.teacherId !== user.teacherId) notFound();
-  const classes = await classOptions(user);
+  const [log, classes] = await Promise.all([getWorkLog(user, id), classOptions(user)]);
 
   return (
     <>

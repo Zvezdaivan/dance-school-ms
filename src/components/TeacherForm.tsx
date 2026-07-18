@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { ErrorBanner, Field, useJsonSubmit } from "@/components/forms";
-import { EMPLOYMENT_TYPES, TEACHER_STATUSES, label } from "@/lib/constants";
+import { EnumOptions } from "@/components/ui";
+import { EMPLOYMENT_TYPES, TEACHER_STATUSES } from "@/lib/constants";
 
 export interface TeacherFormValues {
   id?: string;
@@ -52,7 +53,7 @@ export function TeacherForm({ initial }: { initial?: TeacherFormValues }) {
             onChange={(e) => setEmploymentType(e.target.value)}
             className="input"
           >
-            {EMPLOYMENT_TYPES.map((t) => <option key={t} value={t}>{label(t)}</option>)}
+            <EnumOptions values={EMPLOYMENT_TYPES} />
           </select>
         </Field>
         {employmentType === "MONTHLY" ? (
@@ -66,7 +67,7 @@ export function TeacherForm({ initial }: { initial?: TeacherFormValues }) {
         )}
         <Field label="Status">
           <select name="status" defaultValue={initial?.status ?? "ACTIVE"} className="input">
-            {TEACHER_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
+            <EnumOptions values={TEACHER_STATUSES} />
           </select>
         </Field>
       </div>

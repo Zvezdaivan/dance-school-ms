@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { EMPLOYMENT_TYPES, TEACHER_STATUSES, label } from "@/lib/constants";
 import { fmtDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
-import { Badge, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, EmptyState, FilterSelect, PageHeader } from "@/components/ui";
 import { listTeachers } from "@/server/services/teachers";
 
 export default async function TeachersPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -24,20 +24,8 @@ export default async function TeachersPage(props: { searchParams: Promise<Record
           <label className="label">Search</label>
           <input name="q" defaultValue={sp.q ?? ""} placeholder="Name, phone, email…" className="input" />
         </div>
-        <div className="w-44">
-          <label className="label">Employment</label>
-          <select name="employmentType" defaultValue={sp.employmentType ?? ""} className="input">
-            <option value="">All</option>
-            {EMPLOYMENT_TYPES.map((t) => <option key={t} value={t}>{label(t)}</option>)}
-          </select>
-        </div>
-        <div className="w-36">
-          <label className="label">Status</label>
-          <select name="status" defaultValue={sp.status ?? ""} className="input">
-            <option value="">All</option>
-            {TEACHER_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
-          </select>
-        </div>
+        <FilterSelect name="employmentType" title="Employment" defaultValue={sp.employmentType} values={EMPLOYMENT_TYPES} width="w-44" />
+        <FilterSelect name="status" title="Status" defaultValue={sp.status} values={TEACHER_STATUSES} width="w-36" />
         <button className="btn">Apply</button>
         <Link href="/teachers" className="btn">Clear</Link>
       </form>

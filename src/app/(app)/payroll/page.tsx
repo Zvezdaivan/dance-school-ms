@@ -3,7 +3,7 @@ import { can, requireUser } from "@/lib/auth";
 import { PAYROLL_STATUSES, label } from "@/lib/constants";
 import { currentMonth, minutesToHoursLabel } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
-import { Badge, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, EmptyState, FilterSelect, PageHeader } from "@/components/ui";
 import { PayrollGenerateForm } from "@/components/PayrollControls";
 import { listPayrolls } from "@/server/services/payroll";
 import { teacherOptions } from "@/server/services/teachers";
@@ -36,13 +36,7 @@ export default async function PayrollPage(props: { searchParams: Promise<Record<
           <label className="label">Month</label>
           <input type="month" name="month" defaultValue={sp.month ?? ""} className="input" />
         </div>
-        <div className="w-36">
-          <label className="label">Status</label>
-          <select name="status" defaultValue={sp.status ?? ""} className="input">
-            <option value="">All</option>
-            {PAYROLL_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
-          </select>
-        </div>
+        <FilterSelect name="status" title="Status" defaultValue={sp.status} values={PAYROLL_STATUSES} width="w-36" />
         <button className="btn">Apply</button>
         <Link href="/payroll" className="btn">Clear</Link>
       </form>

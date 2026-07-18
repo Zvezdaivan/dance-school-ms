@@ -4,7 +4,7 @@
 import { prisma } from "@/lib/db";
 import { ReportDefinition } from "@/lib/excel";
 import { centsToDollars } from "@/lib/money";
-import { fmtDate, minutesToHoursLabel, monthOf, parseDateInput } from "@/lib/dates";
+import { dateRangeFilter, fmtDate, monthOf } from "@/lib/dates";
 import { label } from "@/lib/constants";
 import { ReportType } from "@/lib/validation";
 import { SessionUser } from "@/lib/auth";
@@ -15,11 +15,12 @@ interface Range {
   to?: string;
 }
 
-function dateFilter(range: Range) {
-  const filter: { gte?: Date; lte?: Date } = {};
-  if (range.from) filter.gte = parseDateInput(range.from);
-  if (range.to) filter.lte = parseDateInput(range.to);
-  return Object.keys(filter).length ? filter : undefined;
+/** Month-string range filter — pushes "YYYY-MM" comparisons into SQL (indexed). */
+function monthWhere(range: Range) {
+  const where: { gte?: string; lte?: string } = {};
+  if (range.from) where.gte = range.from.slice(0, 7);
+  if (range.to) where.lte = range.to.slice(0, 7);
+  return Object.keys(where).length ? where : undefined;
 }
 
 function rangeLabel(range: Range): string {
@@ -29,15 +30,9 @@ function rangeLabel(range: Range): string {
   return "all time";
 }
 
-function monthInRange(month: string, range: Range): boolean {
-  if (range.from && month < range.from.slice(0, 7)) return false;
-  if (range.to && month > range.to.slice(0, 7)) return false;
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 
-async function studentsReport(range: Range): Promise<ReportDefinition> {
+async function studentsReport(): Promise<ReportDefinition> {
   const students = await prisma.student.findMany({ where: { deletedAt: null }, orderBy: { fullName: "asc" } });
   const byStatus = new Map<string, number>();
   for (const s of students) byStatus.set(s.status, (byStatus.get(s.status) ?? 0) + 1);
@@ -77,7 +72,7 @@ async function studentsReport(range: Range): Promise<ReportDefinition> {
 
 async function paymentsReport(range: Range): Promise<ReportDefinition> {
   const payments = await prisma.payment.findMany({
-    where: { deletedAt: null, paymentDate: dateFilter(range) },
+    where: { deletedAt: null, paymentDate: dateRangeFilter(range) },
     include: { student: { select: { fullName: true } } },
     orderBy: { paymentDate: "asc" },
   });
@@ -196,7 +191,7 @@ async function teachersReport(): Promise<ReportDefinition> {
 
 async function workHoursReport(range: Range): Promise<ReportDefinition> {
   const logs = await prisma.workLog.findMany({
-    where: { deletedAt: null, workDate: dateFilter(range) },
+    where: { deletedAt: null, workDate: dateRangeFilter(range) },
     include: { teacher: { select: { fullName: true } }, class: { select: { name: true } } },
     orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
   });
@@ -234,20 +229,20 @@ async function workHoursReport(range: Range): Promise<ReportDefinition> {
     })),
     totals: { hours: logs.reduce((sum, l) => sum + l.payableMinutes, 0) / 60 },
     summary: [
-      ["Approved hours (payable)", Number(minutesToHoursLabel(logs.filter((l) => l.approvalStatus === "APPROVED").reduce((s, l) => s + l.payableMinutes, 0)))],
+      ["Approved hours (payable)", logs.filter((l) => l.approvalStatus === "APPROVED").reduce((s, l) => s + l.payableMinutes, 0) / 60],
       ...[...approvedByTeacher.entries()].map(
-        ([name, minutes]) => [`${name} — approved hours`, Number(minutesToHoursLabel(minutes))] as [string, number]
+        ([name, minutes]) => [`${name} — approved hours`, minutes / 60] as [string, number]
       ),
     ],
   };
 }
 
 async function payrollReport(range: Range): Promise<ReportDefinition> {
-  const records = await prisma.payrollRecord.findMany({
+  const filtered = await prisma.payrollRecord.findMany({
+    where: { month: monthWhere(range) },
     include: { teacher: { select: { fullName: true } } },
     orderBy: [{ month: "asc" }, { createdAt: "asc" }],
   });
-  const filtered = records.filter((r) => monthInRange(r.month, range));
   const sum = (fn: (r: (typeof filtered)[number]) => number) => filtered.reduce((s, r) => s + fn(r), 0);
   return {
     title: "Teacher Payroll Report",
@@ -302,7 +297,7 @@ async function payrollReport(range: Range): Promise<ReportDefinition> {
 
 async function monthlyIncomeReport(range: Range): Promise<ReportDefinition> {
   const payments = await prisma.payment.findMany({
-    where: { deletedAt: null, status: "PAID", paymentDate: dateFilter(range) },
+    where: { deletedAt: null, status: "PAID", paymentDate: dateRangeFilter(range) },
   });
   const byMonthType = new Map<string, { month: string; type: string; count: number; cents: number }>();
   const byMethod = new Map<string, number>();
@@ -337,11 +332,10 @@ async function monthlyIncomeReport(range: Range): Promise<ReportDefinition> {
 }
 
 async function monthlyExpenseReport(range: Range): Promise<ReportDefinition> {
-  const records = await prisma.payrollRecord.findMany({
-    where: { status: { in: ["APPROVED", "PAID"] } },
+  const filtered = await prisma.payrollRecord.findMany({
+    where: { status: { in: ["APPROVED", "PAID"] }, month: monthWhere(range) },
     include: { teacher: { select: { fullName: true } } },
   });
-  const filtered = records.filter((r) => monthInRange(r.month, range));
   const byMonth = new Map<string, { month: string; teachers: number; minutes: number; gross: number; net: number }>();
   for (const r of filtered) {
     const entry = byMonth.get(r.month) ?? { month: r.month, teachers: 0, minutes: 0, gross: 0, net: 0 };
@@ -379,11 +373,10 @@ async function monthlyExpenseReport(range: Range): Promise<ReportDefinition> {
 }
 
 async function taxSummaryReport(range: Range): Promise<ReportDefinition> {
-  const [payments, payrolls] = await Promise.all([
-    prisma.payment.findMany({ where: { deletedAt: null, status: "PAID", paymentDate: dateFilter(range) } }),
-    prisma.payrollRecord.findMany({ where: { status: { in: ["APPROVED", "PAID"] } } }),
+  const [payments, filteredPayrolls] = await Promise.all([
+    prisma.payment.findMany({ where: { deletedAt: null, status: "PAID", paymentDate: dateRangeFilter(range) } }),
+    prisma.payrollRecord.findMany({ where: { status: { in: ["APPROVED", "PAID"] }, month: monthWhere(range) } }),
   ]);
-  const filteredPayrolls = payrolls.filter((r) => monthInRange(r.month, range));
   const months = new Map<string, { income: number; gross: number; net: number }>();
   for (const p of payments) {
     const m = monthOf(p.paymentDate);
@@ -436,7 +429,7 @@ async function taxSummaryReport(range: Range): Promise<ReportDefinition> {
 export async function buildReport(user: SessionUser, type: ReportType, range: Range): Promise<ReportDefinition> {
   let def: ReportDefinition;
   switch (type) {
-    case "students": def = await studentsReport(range); break;
+    case "students": def = await studentsReport(); break;
     case "payments": def = await paymentsReport(range); break;
     case "outstanding": def = await outstandingReport(); break;
     case "teachers": def = await teachersReport(); break;
@@ -446,14 +439,16 @@ export async function buildReport(user: SessionUser, type: ReportType, range: Ra
     case "monthly-expense": def = await monthlyExpenseReport(range); break;
     case "tax-summary": def = await taxSummaryReport(range); break;
   }
-  await prisma.exportLog.create({
-    data: { userId: user.id, reportType: type, params: JSON.stringify(range) },
-  });
-  await logAudit(user, {
-    action: "EXPORT",
-    entityType: "Report",
-    entityId: type,
-    summary: `Exported ${def.title} (${rangeLabel(range)})`,
-  });
+  await Promise.all([
+    prisma.exportLog.create({
+      data: { userId: user.id, reportType: type, params: JSON.stringify(range) },
+    }),
+    logAudit(user, {
+      action: "EXPORT",
+      entityType: "Report",
+      entityId: type,
+      summary: `Exported ${def.title} (${rangeLabel(range)})`,
+    }),
+  ]);
   return def;
 }

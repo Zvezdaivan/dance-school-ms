@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { handleRoute } from "@/lib/api";
 import { ApiError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit";
 import { SESSION_COOKIE, signSession, verifyPassword } from "@/lib/auth";
 import { loginSchema } from "@/lib/validation";
 import { Role } from "@/lib/constants";
@@ -22,9 +23,7 @@ export const POST = handleRoute(async (req: NextRequest) => {
     teacherId: user.teacherId,
   };
   const token = await signSession(session);
-  await prisma.auditLog.create({
-    data: { userId: user.id, userEmail: user.email, action: "LOGIN", entityType: "User", entityId: user.id, summary: `${user.email} signed in` },
-  });
+  await logAudit(session, { action: "LOGIN", entityType: "User", entityId: user.id, summary: `${user.email} signed in` });
 
   const res = NextResponse.json({ ok: true, user: { name: user.name, role: user.role } });
   res.cookies.set(SESSION_COOKIE, token, {

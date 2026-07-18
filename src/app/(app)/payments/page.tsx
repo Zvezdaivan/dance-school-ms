@@ -3,7 +3,7 @@ import { can, requireUser } from "@/lib/auth";
 import { PAYMENT_METHODS, PAYMENT_STATUSES, PAYMENT_TYPES, label } from "@/lib/constants";
 import { fmtDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
-import { Badge, EmptyState, PageHeader, Pagination, StatCard } from "@/components/ui";
+import { Badge, EmptyState, FilterSelect, makeQs, PageHeader, Pagination, StatCard } from "@/components/ui";
 import { ActionButton } from "@/components/actions";
 import { listPayments } from "@/server/services/payments";
 
@@ -19,8 +19,7 @@ export default async function PaymentsPage(props: { searchParams: Promise<Record
     page: sp.page ? Number(sp.page) : 1,
   });
   const writable = can(user, "payments.write");
-  const qs = (overrides: Record<string, string>) =>
-    "?" + new URLSearchParams({ ...(sp as Record<string, string>), ...overrides }).toString();
+  const qs = makeQs(sp);
 
   return (
     <>
@@ -46,27 +45,9 @@ export default async function PaymentsPage(props: { searchParams: Promise<Record
           <label className="label">To</label>
           <input type="date" name="to" defaultValue={sp.to ?? ""} className="input" />
         </div>
-        <div className="w-36">
-          <label className="label">Status</label>
-          <select name="status" defaultValue={sp.status ?? ""} className="input">
-            <option value="">All</option>
-            {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
-          </select>
-        </div>
-        <div className="w-40">
-          <label className="label">Method</label>
-          <select name="method" defaultValue={sp.method ?? ""} className="input">
-            <option value="">All</option>
-            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{label(m)}</option>)}
-          </select>
-        </div>
-        <div className="w-44">
-          <label className="label">Type</label>
-          <select name="paymentType" defaultValue={sp.paymentType ?? ""} className="input">
-            <option value="">All</option>
-            {PAYMENT_TYPES.map((t) => <option key={t} value={t}>{label(t)}</option>)}
-          </select>
-        </div>
+        <FilterSelect name="status" title="Status" defaultValue={sp.status} values={PAYMENT_STATUSES} width="w-36" />
+        <FilterSelect name="method" title="Method" defaultValue={sp.method} values={PAYMENT_METHODS} />
+        <FilterSelect name="paymentType" title="Type" defaultValue={sp.paymentType} values={PAYMENT_TYPES} width="w-44" />
         <button className="btn">Apply</button>
         <Link href="/payments" className="btn">Clear</Link>
       </form>

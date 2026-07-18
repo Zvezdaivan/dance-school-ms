@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { can, requireUser } from "@/lib/auth";
-import { APPROVAL_STATUSES, label } from "@/lib/constants";
+import { APPROVAL_STATUSES } from "@/lib/constants";
 import { currentMonth, fmtDate, minutesToHoursLabel } from "@/lib/dates";
-import { Badge, EmptyState, PageHeader, Pagination, StatCard } from "@/components/ui";
+import { Badge, EmptyState, FilterSelect, makeQs, PageHeader, Pagination, StatCard } from "@/components/ui";
 import { ActionButton } from "@/components/actions";
 import { listWorkLogs, monthlySummary } from "@/server/services/worklogs";
 import { teacherOptions } from "@/server/services/teachers";
@@ -24,8 +24,7 @@ export default async function WorkLogsPage(props: { searchParams: Promise<Record
     isTeacher ? Promise.resolve([]) : teacherOptions(),
     approver ? monthlySummary(month) : Promise.resolve([]),
   ]);
-  const qs = (overrides: Record<string, string>) =>
-    "?" + new URLSearchParams({ ...(sp as Record<string, string>), month, ...overrides }).toString();
+  const qs = makeQs(sp, { month });
 
   return (
     <>
@@ -62,13 +61,7 @@ export default async function WorkLogsPage(props: { searchParams: Promise<Record
             </select>
           </div>
         )}
-        <div className="w-40">
-          <label className="label">Approval</label>
-          <select name="approvalStatus" defaultValue={sp.approvalStatus ?? ""} className="input">
-            <option value="">All</option>
-            {APPROVAL_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
-          </select>
-        </div>
+        <FilterSelect name="approvalStatus" title="Approval" defaultValue={sp.approvalStatus} values={APPROVAL_STATUSES} />
         <button className="btn">Apply</button>
         <Link href="/work-logs" className="btn">Clear</Link>
       </form>

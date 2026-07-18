@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { hashPassword, SessionUser } from "@/lib/auth";
-import { ApiError } from "@/lib/api-error";
+import { ApiError, orNotFound } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit";
 import { userCreateSchema, userUpdateSchema } from "@/lib/validation";
 import { z } from "zod";
@@ -38,8 +38,7 @@ export async function createUser(actor: SessionUser, input: z.infer<typeof userC
 }
 
 export async function updateUser(actor: SessionUser, id: string, input: z.infer<typeof userUpdateSchema>) {
-  const existing = await prisma.user.findUnique({ where: { id } });
-  if (!existing) throw new ApiError(404, "User not found");
+  orNotFound(await prisma.user.findUnique({ where: { id } }), "User");
   if (id === actor.id && (input.status === "INACTIVE" || (input.role && input.role !== "ADMIN"))) {
     throw new ApiError(409, "You cannot deactivate or demote your own account");
   }

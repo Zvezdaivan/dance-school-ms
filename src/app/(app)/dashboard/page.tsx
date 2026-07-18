@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { requireUser, SessionUser } from "@/lib/auth";
 import { formatCents } from "@/lib/money";
 import { fmtDate, minutesToHoursLabel } from "@/lib/dates";
 import { DAYS_OF_WEEK, label } from "@/lib/constants";
@@ -11,7 +11,7 @@ import { listClasses } from "@/server/services/classes";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  if (user.role === "TEACHER") return <TeacherDashboard />;
+  if (user.role === "TEACHER") return <TeacherDashboard user={user} />;
   const data = await getDashboardData();
 
   const alerts: { text: string; href: string }[] = [];
@@ -114,8 +114,7 @@ export default async function DashboardPage() {
   );
 }
 
-async function TeacherDashboard() {
-  const user = await requireUser();
+async function TeacherDashboard({ user }: { user: SessionUser }) {
   const [classes, workLogs, payrolls] = await Promise.all([
     listClasses(user, {}),
     listWorkLogs(user, { pageSize: 8 }),

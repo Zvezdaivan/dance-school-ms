@@ -11,7 +11,6 @@ interface SheetStudent {
   studentId: string;
   fullName: string;
   existingStatus: string | null;
-  existingNotes: string | null;
 }
 
 interface Sheet {

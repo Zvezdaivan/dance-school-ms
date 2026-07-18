@@ -59,7 +59,7 @@ export default async function PayrollDetailPage(props: { params: Promise<{ id: s
             <DetailRow term="Base pay">{formatCents(record.basePayCents)}</DetailRow>
             <DetailRow term="Allowances">{formatCents(record.allowanceCents)}</DetailRow>
             <DetailRow term="Bonuses">{formatCents(record.bonusCents)}</DetailRow>
-            <DetailRow term="Deductions">-{formatCents(record.deductionCents).replace("HK$", "HK$")}</DetailRow>
+            <DetailRow term="Deductions">-{formatCents(record.deductionCents)}</DetailRow>
             <DetailRow term="Gross pay">{formatCents(record.grossPayCents)}</DetailRow>
             <DetailRow term="Net pay"><span className="text-base font-bold">{formatCents(record.netPayCents)}</span></DetailRow>
             {record.status === "PAID" && (

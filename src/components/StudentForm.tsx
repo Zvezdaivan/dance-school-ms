@@ -1,7 +1,8 @@
 "use client";
 
 import { ErrorBanner, Field, useJsonSubmit } from "@/components/forms";
-import { STUDENT_STATUSES, label } from "@/lib/constants";
+import { EnumOptions } from "@/components/ui";
+import { STUDENT_STATUSES } from "@/lib/constants";
 
 export interface StudentFormValues {
   id?: string;
@@ -53,7 +54,7 @@ export function StudentForm({ initial }: { initial?: StudentFormValues }) {
         </Field>
         <Field label="Status">
           <select name="status" defaultValue={initial?.status ?? "ACTIVE"} className="input">
-            {STUDENT_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
+            <EnumOptions values={STUDENT_STATUSES} />
           </select>
         </Field>
       </div>

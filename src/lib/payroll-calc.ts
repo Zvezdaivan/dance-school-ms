@@ -1,5 +1,6 @@
 // Pure payroll/work-hours business logic — no database access, unit-testable.
 
+import { DomainError } from "./api-error";
 import { timeToMinutes } from "./dates";
 
 /**
@@ -10,10 +11,10 @@ import { timeToMinutes } from "./dates";
 export function computePayableMinutes(startTime: string, endTime: string, breakMinutes: number): number {
   const start = timeToMinutes(startTime);
   const end = timeToMinutes(endTime);
-  if (end <= start) throw new Error("End time must be after start time");
-  if (breakMinutes < 0) throw new Error("Break cannot be negative");
+  if (end <= start) throw new DomainError("End time must be after start time");
+  if (breakMinutes < 0) throw new DomainError("Break cannot be negative");
   const payable = end - start - breakMinutes;
-  if (payable <= 0) throw new Error("Break exceeds the working period");
+  if (payable <= 0) throw new DomainError("Break exceeds the working period");
   return payable;
 }
 
@@ -31,10 +32,10 @@ export interface BasePayInput {
  */
 export function computeBasePayCents(input: BasePayInput): number {
   if (input.employmentType === "MONTHLY") {
-    if (input.monthlySalaryCents == null) throw new Error("Monthly-salaried teacher has no salary set");
+    if (input.monthlySalaryCents == null) throw new DomainError("Monthly-salaried teacher has no salary set");
     return input.monthlySalaryCents;
   }
-  if (input.hourlyRateCents == null) throw new Error("Hourly teacher has no hourly rate set");
+  if (input.hourlyRateCents == null) throw new DomainError("Hourly teacher has no hourly rate set");
   return Math.round((input.hourlyRateCents * input.totalMinutes) / 60);
 }
 
@@ -57,11 +58,11 @@ export function computePayrollTotals(basePayCents: number, adjustments: Adjustme
     bonus = 0,
     deduction = 0;
   for (const adj of adjustments) {
-    if (adj.amountCents < 0) throw new Error("Adjustment amounts must be positive");
+    if (adj.amountCents < 0) throw new DomainError("Adjustment amounts must be positive");
     if (adj.type === "ALLOWANCE") allowance += adj.amountCents;
     else if (adj.type === "BONUS") bonus += adj.amountCents;
     else if (adj.type === "DEDUCTION") deduction += adj.amountCents;
-    else throw new Error(`Unknown adjustment type: ${adj.type}`);
+    else throw new DomainError(`Unknown adjustment type: ${adj.type}`);
   }
   const gross = basePayCents + allowance + bonus;
   return {

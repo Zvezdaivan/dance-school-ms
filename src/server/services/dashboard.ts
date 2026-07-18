@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { currentMonth, monthRange } from "@/lib/dates";
+import { OUTSTANDING_WHERE } from "./payments";
 
 export async function getDashboardData() {
   const month = currentMonth();
@@ -24,7 +25,7 @@ export async function getDashboardData() {
       _sum: { amountCents: true },
     }),
     prisma.payment.aggregate({
-      where: { deletedAt: null, status: { in: ["PENDING", "OVERDUE"] } },
+      where: OUTSTANDING_WHERE,
       _sum: { amountCents: true },
       _count: true,
     }),
